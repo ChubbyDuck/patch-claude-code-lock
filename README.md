@@ -4,7 +4,12 @@
 
 Agent skill that patches the Claude Code (`anthropic.claude-code`) extension so it stops locking editor groups and creating a stray empty column (blank pane with only an X) when opened next to Cursor Agents.
 
-There is no setting for either behavior. The skill patches minified `extension.js` in each installed version. Extension updates install into a fresh directory, so re-run the patch after every update.
+This skill fixes two existing issues by patching the obfuscated minified `extension.js` on the local machine (there is no setting for either behavior):
+
+- [anthropics/claude-code#80148](https://github.com/anthropics/claude-code/issues/80148) — extension programmatically locks the editor group (`workbench.action.lockEditorGroup`), bypassing `workbench.editor.autoLockGroups`
+- [anthropics/claude-code#83333](https://github.com/anthropics/claude-code/issues/83333) — `findUnusedColumn()` creates an empty editor group (blank pane with only an X) when opening beside Cursor Agents
+
+Extension updates install into a fresh directory, so re-run the patch after every update.
 
 ## Install
 
@@ -12,7 +17,7 @@ There is no setting for either behavior. The skill patches minified `extension.j
 npx skills add ChubbyDuck/patch-claude-code-lock
 ```
 
-This is a private GitHub repo. The [skills CLI](https://www.skills.sh/) can still install it if you have access (Git credentials, GitHub CLI, or SSH). For a global Cursor install:
+For a global Cursor install:
 
 ```bash
 npx skills add ChubbyDuck/patch-claude-code-lock -g -a cursor -y
