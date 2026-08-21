@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Patch Claude Code extension.js to stop empty/locked editor columns.
 
-Two fixes, both applied to every anthropic.claude-code-* install under
+Three fixes, all applied to every anthropic.claude-code-* install under
 ~/.cursor/extensions and ~/.vscode/extensions:
 
 1. Lock: neutralize `workbench.action.lockEditorGroup` when the panel opens in
@@ -11,6 +11,11 @@ Two fixes, both applied to every anthropic.claude-code-* install under
    (findUnusedColumn picks an absolute unused ViewColumn and leaves a blank
    pane with only an X). The minified vscode import alias varies by version
    (e.g. Tt, It, Rt) and is detected from nearby createWebviewPanel usage.
+3. Group: createPanel reuses an existing editor group only if ALL of its tabs
+   are Claude webviews (`tabs.every(...viewType.includes("claudeVSCodePanel"))`).
+   As soon as one regular file shares the group, every new session opens in a
+   fresh split instead of joining the existing Claude tabs. `every` → `some`:
+   one Claude tab in a group is enough to reuse it.
 """
 
 import re
@@ -38,10 +43,26 @@ COLUMN_OLD = "this.findUnusedColumn()"
 COLUMN_PATCHED = re.compile(
     r"(?P<alias>[A-Za-z$_][\w$]*)\.ViewColumn\.Beside\|\|1"
 )
-# After a bad/good column patch: ...else i=ALIAS.ViewColumn.Beside||1,n=!0}let o=ALIAS.window.createWebviewPanel
+# Before/after the column patch: ...else i=this.findUnusedColumn(),n=!0}let o=ALIAS.window.createWebviewPanel
+# The flag/panel variable names (n, o / i, s / ...) vary by version like the alias does.
 COLUMN_SITE = re.compile(
     r"(?:this\.findUnusedColumn\(\)|[A-Za-z$_][\w$]*\.ViewColumn\.Beside\|\|1)"
-    r"(?P<tail>,n=!0\}let o=([A-Za-z$_][\w$]*)\.window\.createWebviewPanel)"
+    r"(?P<tail>,[A-Za-z$_][\w$]*=!0\}let [A-Za-z$_][\w$]*="
+    r"(?P<alias>[A-Za-z$_][\w$]*)\.window\.createWebviewPanel)"
+)
+
+
+# Matches: if(l.tabs.length===0)return!1;return l.tabs.every((u)=>{
+#   if(u.input instanceof Nt.TabInputWebview)return u.input.viewType.includes("claudeVSCodePanel");return!1})
+GROUP_CALL = re.compile(
+    r"(?P<head>tabs\.length===0\)return!1;return [A-Za-z$_][\w$]*\.tabs\.)every"
+    r"(?P<tail>\(\([A-Za-z$_][\w$]*\)=>\{if\([A-Za-z$_][\w$]*\.input instanceof "
+    r"[A-Za-z$_][\w$]*\.TabInputWebview\)return [A-Za-z$_][\w$]*"
+    r'\.input\.viewType\.includes\("claudeVSCodePanel"\))'
+)
+
+GROUP_ALREADY = re.compile(
+    r"tabs\.length===0\)return!1;return [A-Za-z$_][\w$]*\.tabs\.some\("
 )
 
 
@@ -50,7 +71,7 @@ def column_replacement(alias: str) -> str:
 
 
 def patch_file(extension_js: Path) -> str:
-    src = extension_js.read_text()
+    src = extension_js.read_text(encoding="utf-8")
     parts: list[str] = []
 
     if LOCK_ALREADY.search(src):
@@ -72,7 +93,7 @@ def patch_file(extension_js: Path) -> str:
         else:
             parts.append("column PATTERN NOT FOUND")
     else:
-        alias = site.group(2)
+        alias = site.group("alias")
         desired = column_replacement(alias)
         current = site.group(0)[: len(desired)]
         if current == desired:
@@ -86,13 +107,24 @@ def patch_file(extension_js: Path) -> str:
             else:
                 parts.append(f"column fixed ({current.split('.')[0]}→{alias})")
 
+    if GROUP_ALREADY.search(src):
+        parts.append("group already patched")
+    else:
+        patched, count = GROUP_CALL.subn(r"\g<head>some\g<tail>", src)
+        if count == 0:
+            parts.append("group PATTERN NOT FOUND")
+        else:
+            src = patched
+            parts.append(f"group patched ({count})")
+
     if any(
         p.startswith("lock patched")
         or p.startswith("column patched")
         or p.startswith("column fixed")
+        or p.startswith("group patched")
         for p in parts
     ):
-        extension_js.write_text(src)
+        extension_js.write_text(src, encoding="utf-8")
 
     return "; ".join(parts)
 

@@ -4,10 +4,11 @@
 
 Agent skill that patches the Claude Code (`anthropic.claude-code`) extension so it stops locking editor groups and creating a stray empty column (blank pane with only an X) when opened next to Cursor Agents.
 
-This skill fixes two existing issues by patching the obfuscated minified `extension.js` on the local machine (there is no setting for either behavior):
+This skill fixes three existing issues by patching the obfuscated minified `extension.js` on the local machine (there is no setting for any of these behaviors):
 
 - [anthropics/claude-code#80148](https://github.com/anthropics/claude-code/issues/80148) — extension programmatically locks the editor group (`workbench.action.lockEditorGroup`), bypassing `workbench.editor.autoLockGroups`
 - [anthropics/claude-code#83333](https://github.com/anthropics/claude-code/issues/83333) — `findUnusedColumn()` creates an empty editor group (blank pane with only an X) when opening beside Cursor Agents
+- New sessions only join an existing editor group if ALL of its tabs are Claude webviews (`tabs.every`); as soon as one regular file shares the group, every new session opens in a fresh split instead of joining the existing Claude tabs. Patched to `tabs.some`: one Claude tab in a group is enough to reuse it.
 
 Extension updates install into a fresh directory, so re-run the patch after every update.
 
